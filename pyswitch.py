@@ -52,25 +52,27 @@ def main():
         poller.register(personaSocket, POLLIN)
         print("Registered login and persona sockets")
         
-        incoming = poller.poll()
         
-        for fd, event in incoming:
-            if fd == loginSocket.fileno():
-                print("Login socket ready")
-            elif fd == personaSocket.fileno():
-                print("Persona socket ready")
-            else:
-                print("Unknown socket ready")
+        while True:
+            incoming = poller.poll()
+            
+            for fd, event in incoming:
+                if fd == loginSocket.fileno():
+                    print("Login socket ready")
+                elif fd == personaSocket.fileno():
+                    print("Persona socket ready")
+                else:
+                    print("Unknown socket ready")
+                    
+            try:
+                incomingSocket = fdMapper[fd]
                 
-        try:
-            incomingSocket = fdMapper[fd]
+                newSocket, addr = incomingSocket.accept()            
+                
+                print("Accepted connection on port", incomingSocket.getsockname()[1])
+            except OSError as e:
+                print("Error accepting connection on port ", fd, ": ", e)
             
-            newSocket, addr = incomingSocket.accept()            
-            
-            print("Accepted connection on port", incomingSocket.getsockname()[1])
-        except OSError as e:
-            print("Error accepting connection on port ", fd, ": ", e)
-        
         
     except OSError as e:
         print("Error registering login and persona sockets: ", e)
