@@ -29,4 +29,5 @@ class PySwitch:
         except KeyboardInterrupt:
             print("Caught KeyboardInterrupt")
             print("Exiting")
+            self.server.server_close()
             exit(0)
