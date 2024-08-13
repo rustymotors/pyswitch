@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
@@ -27,6 +29,11 @@ jobs:
       uses: pdm-project/setup-pdm@v4.1
     - name: install project
       run: pdm install
+    - name: Run ATS
+      uses: codecov/codecov-ats@v0
+      env:
+        CODECOV_STATIC_TOKEN: ${{ secrets.CODECOV_STATIC_TOKEN }}
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     - name: test project
       run: make test
             
