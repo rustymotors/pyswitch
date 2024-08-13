@@ -1,5 +1,5 @@
-from pyswitch.tls_constants import TLSHandshakeType
-from pyswitch.utils import bin2hex
+from pyswitch.src.tls_constants import TLSHandshakeType
+from pyswitch.src.utils import bin2hex
 
 
 class TLSProtocolVersion:

@@ -1,12 +1,12 @@
 from os import getenv
-from pyswitch.PySwitch import PySwitch
-from dotenv import load_dotenv, find_dotenv
+from pyswitch.server import PySwitch
+from dotenv import load_dotenv
 
 import sentry_sdk
 
 
 def main():
-    load_dotenv(find_dotenv())
+    load_dotenv(verbose=True)
 
     sentry_dsn = getenv("SENTRY_DSN")
 

@@ -4,7 +4,7 @@ from pyswitch.ConnectionHandler import ConnectionHandler
 
 from socketserver import ThreadingTCPServer
 
-from pyswitch.setup_logging import setup_logging
+from pyswitch.src.setup_logging import setup_logging
 
 DEFAULT_LOGGING_LEVEL = logging.DEBUG
 
