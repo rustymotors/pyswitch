@@ -6,7 +6,7 @@ lint:
 
 
 test:
-	@pdm run cat codecov_ats/tests_to_run.txt | xargs pytest --verbose --cov=pyswitch --cov-report=term-missing && pdm run python -m coverage xml
+	@cat codecov_ats/tests_to_run.txt | xargs pdm run pytest --verbose --cov=pyswitch --cov-report=term-missing && pdm run python -m coverage xml
 
 install:
 	@pdm install
