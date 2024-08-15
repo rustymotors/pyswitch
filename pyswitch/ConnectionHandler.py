@@ -1,6 +1,4 @@
 import io
-from ssl import create_default_context
-import ssl
 from loguru import logger
 from pyswitch.src.ssl.ssl_v2 import SSLv2Record
 from pyswitch.src.tls import TLSProtocolVersion
