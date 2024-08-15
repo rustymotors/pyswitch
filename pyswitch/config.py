@@ -1,0 +1,6 @@
+import logging
+
+
+DEFAULT_LOGGING_LEVEL = logging.DEBUG
+LISTEN_HOST = "0.0.0.0"
+LISTEN_PORT = 443

@@ -1,12 +1,10 @@
-import logging
 from pyswitch.ConnectionHandler import ConnectionHandler
 
 
 from socketserver import ThreadingTCPServer
 
+from pyswitch.config import DEFAULT_LOGGING_LEVEL, LISTEN_HOST, LISTEN_PORT
 from pyswitch.src.setup_logging import setup_logging
-
-DEFAULT_LOGGING_LEVEL = logging.DEBUG
 
 
 class PySwitch:
@@ -16,18 +14,14 @@ class PySwitch:
 
         setup_logging(DEFAULT_LOGGING_LEVEL)
 
-        self.server = ThreadingTCPServer(("0.0.0.0", 443), ConnectionHandler)
+        try:
+            self.server = ThreadingTCPServer(
+                (LISTEN_HOST, LISTEN_PORT), ConnectionHandler
+            )
+        except OSError as e:
+            if e.errno == 98:
+                print("Port is already in use")
+                exit(1)
 
     def run(self):
-        try:
-            self.server.serve_forever()
-        except OSError as e:
-            print("Error: ", e)
-            print("Exiting")
-            exit(1)
-
-        except KeyboardInterrupt:
-            print("Caught KeyboardInterrupt")
-            print("Exiting")
-            self.server.server_close()
-            exit(0)
+        self.server.serve_forever()
