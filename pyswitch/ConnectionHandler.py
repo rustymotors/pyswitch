@@ -60,10 +60,7 @@ class ConnectionHandler(StreamRequestHandler):
         protocol_version = TLSProtocolVersion(first_bytes[1:3])
         print("Protocol version: ", protocol_version)
 
-        ssl_context = create_default_context(ssl.Purpose.CLIENT_AUTH)
-
-        with ssl_context.wrap_socket(self.request, server_side=True) as ssl_socket:
-            print("SSL version: ", ssl_socket.version())
+        return
 
 
 def peek_data(sock: socket.socket, len: int):
