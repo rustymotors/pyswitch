@@ -1,16 +1,33 @@
-import io
-from loguru import logger
-from pyswitch.src.ssl.ssl_v2 import SSLv2Record
-from pyswitch.src.tls import TLSProtocolVersion
-from pyswitch.src.tls_constants import TLSContentType
-from pyswitch.src.utils import assert_enough_data, bin2hex, is_msb_set
 import socket
 from socketserver import StreamRequestHandler
+
+from loguru import logger
+
+from pyswitch.config import (
+    LEGACY_BACKEND_HOST,
+    LEGACY_BACKEND_PORT,
+    MODERN_BACKEND_HOST,
+    MODERN_BACKEND_PORT,
+)
+from pyswitch.src.relay import relay_streams
+from pyswitch.src.utils import bin2hex, is_msb_set
+
+# Real TLS record ContentType values (RFC 8446 5.1) -- checked directly as
+# ints rather than via TLSContentType, since that enum aliases 23 and 255 to
+# the same member (APPLICATION_DATA_1 | APPLICATION_DATA_2 is a bitwise OR
+# of ints, not a set of accepted values) and would misclassify a legacy
+# SSLv2 record whose first byte happens to be 0xFF as modern TLS.
+REAL_TLS_CONTENT_TYPES = {20, 21, 22, 23}
+
+# Most ClientHellos land in a single TCP segment well under this; only the
+# classification header (a few bytes) actually needs to be present here --
+# whatever else arrives in the same read is still forwarded to the backend
+# unparsed, along with everything that follows.
+INITIAL_READ_SIZE = 65536
 
 
 class ConnectionHandler(StreamRequestHandler):
     request: socket.socket
-    rfile: io.BufferedReader
 
     def handle(self):
         logger.debug(
@@ -19,61 +36,81 @@ class ConnectionHandler(StreamRequestHandler):
             )
         )
 
-        first_bytes = peek_data(self.request, len=32814)
+        try:
+            initial_data = self.request.recv(INITIAL_READ_SIZE)
+        except OSError as e:
+            logger.debug("Error reading initial data: {}", e)
+            return
 
-        logger.debug("First bytes: {}".format(bin2hex(first_bytes)))
+        if not initial_data:
+            logger.debug("Client disconnected before sending data")
+            return
+
+        logger.debug("First bytes: {}", bin2hex(initial_data[:32]))
 
         try:
-            content_type = TLSContentType(first_bytes[0])
-            print("Content Type: ", content_type.name)
-        except ValueError:
-            # Unable to parse as TLS, try SSL
-            try:
-                if is_msb_set(first_bytes[0]):
-                    logger.debug("Length MSB is set, record is 2 bytes")
-                    record_length = ((first_bytes[0] & 0x7F) << 8) | first_bytes[1]
-                else:
-                    logger.debug("Length MSB is not set, record is 3 bytes")
-                    record_length = ((first_bytes[0] & 0x3F) << 8) | first_bytes[1]
+            is_legacy = self._is_legacy_ssl(initial_data)
+        except ValueError as e:
+            logger.error("Could not classify connection, closing: {}", e)
+            return
 
-                logger.debug("Record length: {}".format(record_length))
-                try:
-                    assert_enough_data(
-                        len(self.rfile.peek(record_length)), record_length
-                    )
-                except ValueError as e:
-                    logger.error("Error: {}".format(e))
+        if is_legacy:
+            backend_host, backend_port = LEGACY_BACKEND_HOST, LEGACY_BACKEND_PORT
+            logger.info(
+                "{}: classified legacy SSL, routing to {}:{}",
+                self.client_address,
+                backend_host,
+                backend_port,
+            )
+        else:
+            backend_host, backend_port = MODERN_BACKEND_HOST, MODERN_BACKEND_PORT
+            logger.info(
+                "{}: classified modern TLS, routing to {}:{}",
+                self.client_address,
+                backend_host,
+                backend_port,
+            )
 
-                ssl_record = SSLv2Record(self.rfile.read(record_length))
+        try:
+            backend_sock = socket.create_connection((backend_host, backend_port))
+        except OSError as e:
+            logger.error(
+                "Could not connect to backend {}:{}: {}", backend_host, backend_port, e
+            )
+            return
 
-                logger.debug("SSL Record: {}".format(ssl_record))
-                self.request.close()
-                return
+        try:
+            backend_sock.sendall(initial_data)
+        except OSError as e:
+            logger.error("Could not forward initial data to backend: {}", e)
+            backend_sock.close()
+            return
 
-            except Exception as e:
-                print("Error: ", e)
-                self.request.close()
-                return
+        relay_streams(self.request, backend_sock)
 
-        protocol_version = TLSProtocolVersion(first_bytes[1:3])
-        print("Protocol version: ", protocol_version)
+    @staticmethod
+    def _is_legacy_ssl(data: bytes) -> bool:
+        """True if data looks like a legacy SSLv2 record (no real
+        ContentType byte); False if it looks like real TLS/SSLv3+. Raises
+        ValueError if it matches neither shape."""
+        if len(data) < 2:
+            raise ValueError("Not enough data to classify connection")
 
-        return
+        if data[0] in REAL_TLS_CONTENT_TYPES:
+            return False
 
+        # Not a real ContentType -- check for the legacy SSLv2 2/3-byte
+        # record header shape instead (the high bit of the first byte is
+        # the 2-vs-3-byte-header flag, not a content type at all).
+        if is_msb_set(data[0]):
+            record_length = ((data[0] & 0x7F) << 8) | data[1]
+        else:
+            record_length = ((data[0] & 0x3F) << 8) | data[1]
 
-def peek_data(sock: socket.socket, len: int):
-    """
-    Receive data from the socket without removing it from the receive buffer.
+        if record_length <= 0:
+            raise ValueError(
+                f"First byte 0x{data[0]:02x} is neither a real TLS ContentType "
+                "nor a plausible SSLv2 record header"
+            )
 
-    Args:
-        sock (socket.socket): The socket object to receive data from.
-        len (int): The maximum number of bytes to receive.
-
-    Returns:
-        bytes: The received data as bytes.
-
-    Raises:
-        OSError: If an error occurs while receiving data.
-
-    """
-    return sock.recv(len, socket.MSG_PEEK)
+        return True
